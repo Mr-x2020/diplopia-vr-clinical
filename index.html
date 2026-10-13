@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>Diplopia VR - Clinical Master Engine v2.5.1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background-color: #000; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
+    canvas { display: block; }
+
+    .overlay-screen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(8, 9, 14, 0.96); color: #e0e0e0;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      z-index: 1000; padding: 24px; text-align: center;
+    }
+    .modal-card {
+      background: #141722; border: 1px solid #2a334d; border-radius: 14px;
+      padding: 26px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    }
+    h1 { font-size: 1.35rem; margin-bottom: 12px; color: #00ffcc; font-weight: 700; }
+    h2 { font-size: 1.1rem; margin-bottom: 10px; color: #fff; }
+    p { font-size: 0.88rem; line-height: 1.6; margin-bottom: 14px; color: #a0a6b8; text-align: justify; }
+    
+    .warning-box {
+      background: rgba(255, 68, 68, 0.08); border: 1px solid rgba(255, 68, 68, 0.3);
+      padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.82rem; color: #ff8888; text-align: right;
+    }
+
+    .btn-group { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+    button {
+      background: #00ffcc; color: #051015; border: none; padding: 10px 16px;
+      font-size: 0.9rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: 0.2s;
+    }
+    button:active { transform: scale(0.97); }
+    button.secondary { background: #23293a; color: #ccc; }
+    button.analytics-btn { background: #3b82f6; color: #fff; }
+    button.export-btn { background: #10b981; color: #fff; }
+    button.exit-btn { background: #e11d48; color: #fff; }
+    button.demo-btn { background: #8b5cf6; color: #fff; }
+    button.active-game { border: 2px solid #00ffcc; background: #1a333c; color: #00ffcc; }
+
+    .slider-container { margin: 18px 0; text-align: center; }
+    .slider-container label { display: block; font-size: 0.92rem; margin-bottom: 8px; color: #00ffcc; }
+    input[type=range] { width: 85%; height: 6px; border-radius: 3px; background: #2a334d; outline: none; }
+
+    .stats-table {
+      width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.82rem; text-align: center;
+    }
+    .stats-table th, .stats-table td {
+      border: 1px solid #2a334d; padding: 8px 6px; color: #cbd5e1;
+    }
+    .stats-table th { background: #1e2436; color: #00ffcc; }
+
+    #hud-overlay {
+      display: none; position: absolute; top: 12px; left: 12px;
+      background: rgba(10, 15, 25, 0.78); border: 1px solid #1f2e4d;
+      padding: 8px 14px; border-radius: 8px; color: #00ffcc;
+      font-size: 0.78rem; z-index: 500; pointer-events: none; line-height: 1.5;
+    }
+
+    #gamepad-toast {
+      position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+      background: rgba(15, 20, 30, 0.92); border: 1px solid #3b82f6;
+      color: #93c5fd; padding: 7px 16px; border-radius: 20px; font-size: 0.78rem;
+      display: none; z-index: 600; text-align: center;
+    }
+
+    #panic-screen {
+      display: none; position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: #000; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; color: #888;
+    }
+    #panic-screen h2 { color: #ff5555; }
+
+    #pause-screen {
+      display: none; position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(5, 5, 8, 0.94); z-index: 5000; flex-direction: column; justify-content: center; align-items: center; color: #fff;
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <div id="gamepad-toast"></div>
+
+  <div id="hud-overlay">
+    <div>التباين: <span id="hud-contrast">15%</span> | الوقت: <span id="hud-time">00:00</span></div>
+    <div>المؤشر: <span id="hud-metric">--</span> | السلسلة: <span id="hud-streak">0</span></div>
+  </div>
+
+  <!-- 1. شاشة التحذير الطبي -->
+  <div id="step-disclaimer" class="overlay-screen">
+    <div class="modal-card">
+      <h1>إخلاء مسؤولية طبي وقائي</h1>
+      <div class="warning-box">
+        <strong>تنبيه سريري:</strong> هذا النظام أداة تدريب بصري ثنائية تعتمد على بروتوكول جيمس بلاها، وليس بديلاً عن الفحص السريري لأخصائي الحول.
+      </div>
+      <p>
+        موانع الاستخدام القطعية:
+        <br>• الصرع الحركي أو التحسس الضوئي.
+        <br>• ازدواجية الرؤية الدائمة خارج النظارة (Intractable Diplopia).
+        <br>• جراحات عضلات العين الحديثة دون إذن طبي.
+      </p>
+      <button onclick="acceptDisclaimer()">أقر بالقراءة وأتحمل مسؤولية الاستخدام</button>
+    </div>
+  </div>
+
+  <!-- 2. تهيئة الجلسة واختيار التمرين -->
+  <div id="step-eye-select" class="overlay-screen" style="display: none;">
+    <div class="modal-card">
+      <h2>إعدادات الجلسة والبروتوكول العلاجي</h2>
+      <p style="text-align: center;">اختر العين الكسولة المستهدفة بالتحفيز العالي:</p>
+      <div class="btn-group">
+        <button id="btn-eye-left" onclick="selectEye('left')">العين اليسرى كسولة</button>
+        <button id="btn-eye-right" onclick="selectEye('right')">العين اليمنى كسولة</button>
+      </div>
+
+      <p style="text-align: center; margin-top: 16px;">اختر التمرين البصري من الثلاثية السريرية:</p>
+      <div class="btn-group">
+        <button id="btn-game-tetris" class="active-game" onclick="selectGame('TETRIS')">Tetris (مكافحة القمع 2D)</button>
+        <button id="btn-game-breakout" class="secondary" onclick="selectGame('BREAKOUT')">3D Breakout (العمق المجسم)</button>
+        <button id="btn-game-fixation" class="secondary" onclick="selectGame('FIXATION')">Gaze Fixation (استقرار التثبيت)</button>
+      </div>
+
+      <div class="btn-group" style="margin-top: 22px;">
+        <button onclick="proceedToIPD()">متابعة لمعايرة الـ IPD في VR</button>
+        <button class="demo-btn" onclick="launchDemoMode()">🎬 وضع المعاينة للأطباء (2D Demo)</button>
+        <button class="analytics-btn" onclick="openAnalyticsModal()">📊 تقرير الجلسات السريري</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. معايرة المسافة بين الحدقتين -->
+  <div id="step-ipd" class="overlay-screen" style="display: none;">
+    <div class="modal-card">
+      <h2>معايرة المسافة بين الحدقتين (IPD)</h2>
+      <p>اضبط المسافة لتطابق مقاسك الفعلي بالمليمتر لمنع تشنج التقارب العيني.</p>
+      <div class="slider-container">
+        <label id="ipd-val-label">المسافة الحالية: 63 ملم</label>
+        <input type="range" id="ipd-slider" min="54" max="74" value="63" oninput="updateIPDDisplay(this.value)">
+      </div>
+      <div class="btn-group">
+        <button onclick="confirmIPD()">تثبيت والذهاب للمنشور الرقمي</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. شاشة بدء المعايرة والمنشور الرقمي -->
+  <div id="step-calibration-guide" class="overlay-screen" style="display: none;">
+    <div class="modal-card">
+      <h2>المنشور الرقمي (Digital Prism)</h2>
+      <p>
+        ضع الهاتف في النظارة.<br>
+        حرّك عصا التحكم حتى يستقر الصليب بدقة <strong>داخل الدائرة</strong> لتعويض زاوية الحول.<br>
+        اضغط <strong>(A)</strong> أو <strong>(Enter)</strong> لبدء الجلسة فوراً.<br>
+        <br>
+        <span style="color: #ffaa00;">أوامر سريعة: اضغط (Q) أو Start للإنهاء والحفظ. اضغط (Escape) للطوارئ.</span>
+      </p>
+      <button onclick="launchVRExperience()">دخول شاشات VR</button>
+    </div>
+  </div>
+
+  <!-- 5. لوحة التحليلات الطبية -->
+  <div id="step-analytics" class="overlay-screen" style="display: none;">
+    <div class="modal-card">
+      <h2>السجل السريري للجلسات</h2>
+      <p>تتبع زمني لتطور التباين وسرعة الاستجابة ومدة الاستخدام الفعلي:</p>
+      
+      <div id="analytics-summary" style="font-size: 0.85rem; color: #00ffcc; margin-bottom: 12px; text-align: right;"></div>
+      
+      <div style="max-height: 220px; overflow-y: auto;">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>التاريخ</th>
+              <th>التمرين</th>
+              <th>المدة</th>
+              <th>التباين</th>
+              <th>الإنجاز وسرعة الاستجابة</th>
+            </tr>
+          </thead>
+          <tbody id="analytics-table-body"></tbody>
+        </table>
+      </div>
+
+      <div class="btn-group" style="margin-top: 18px;">
+        <button class="export-btn" onclick="exportMedicalReportJSON()">تصدير تقرير JSON للطبيب</button>
+        <button class="secondary" onclick="closeAnalyticsModal()">إغلاق السجل</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. شاشة التوقف المؤقت والإنهاء اليدوي -->
+  <div id="pause-screen">
+    <h2>الجلسة متوقفة مؤقتاً</h2>
+    <p style="color: #aaa; margin: 15px 0;">تم إيقاف احتساب الوقت مؤقتاً لحماية العين.</p>
+    <div class="btn-group">
+      <button onclick="resumeSession()">استئناف اللعب</button>
+      <button class="exit-btn" onclick="endSessionManually()">إنهاء الجلسة وحفظ التقرير</button>
+    </div>
+  </div>
+
+  <!-- 7. شاشة الطوارئ الفورية -->
+  <div id="panic-screen">
+    <h2>تم الإيقاف الفوري للجلسة</h2>
+    <p>أغمض عينيك وارتح لدقيقة كاملة لتهدئة عضلات العين.</p>
+    <button class="secondary" onclick="recoverFromPanic()" style="margin-top: 20px;">العودة للقائمة الرئيسية</button>
+  </div>
+
+  <canvas id="gl-canvas"></canvas>
+
+  <script>
+    /* ========================================================
+       1. الحالة العامة ونظام التحليلات
+       ======================================================== */
+    const STORAGE_KEY = 'diplopia_vr_session_data_v2';
+    const ANALYTICS_KEY = 'diplopia_vr_analytics_history_v1';
+
+    const STATE = {
+      mode: 'SETUP', // SETUP, CALIBRATING, PLAYING, PAUSED, GAME_OVER, PANIC
+      selectedGame: 'TETRIS',
+      isDemo2D: false,
+      lazyEye: 'left',
+      goodEyeContrast: 0.15,
+      ipdMeters: 0.063,
+      alignmentOffset: { x: 0.0, y: 0.0 },
+      streak: 0,
+      breakoutSpeedMultiplier: 1.0,
+      isPanicked: false
+    };
+
+    const CURRENT_SESSION = {
+      startTime: 0,
+      activePlaySeconds: 0,
+      hits: 0,
+      misses: 0,
+      reactionTimes: [],
+      startContrast: 0.15,
+      recorded: false
+    };
+
+    window.addEventListener('gamepadconnected', (e) => {
+      showToast(`تم توصيل ذراع التحكم: ${e.gamepad.id.slice(0, 22)}`);
+    });
+    window.addEventListener('gamepaddisconnected', () => {
+      showToast('⚠️ انقطع اتصال ذراع التحكم');
+    });
+
+    function showToast(msg) {
+      const toast = document.getElementById('gamepad-toast');
+      toast.innerText = msg;
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 3500);
+    }
+
+    function loadPersistedData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          STATE.lazyEye = parsed.lazyEye || 'left';
+          STATE.goodEyeContrast = parsed.goodEyeContrast || 0.15;
+          STATE.ipdMeters = parsed.ipdMeters || 0.063;
+          STATE.alignmentOffset = parsed.alignmentOffset || { x: 0.0, y: 0.0 };
+          STATE.selectedGame = parsed.selectedGame || 'TETRIS';
+          
+          document.getElementById('ipd-slider').value = Math.round(STATE.ipdMeters * 1000);
+          updateIPDDisplay(Math.round(STATE.ipdMeters * 1000));
+          selectGame(STATE.selectedGame);
+          selectEye(STATE.lazyEye);
+        }
+      } catch (err) {
+        console.warn('Storage read failed:', err);
+      }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          lazyEye: STATE.lazyEye,
+          goodEyeContrast: STATE.goodEyeContrast,
+          ipdMeters: STATE.ipdMeters,
+          alignmentOffset: STATE.alignmentOffset,
+          selectedGame: STATE.selectedGame,
+          lastSessionDate: new Date().toISOString()
+        }));
+      } catch (err) {
+        console.warn('Storage save failed:', err);
+      }
+    }
+
+    function recordSessionAnalytics(reason) {
+      if (CURRENT_SESSION.activePlaySeconds < 8 || CURRENT_SESSION.recorded) return;
+
+      try {
+        const rawHistory = localStorage.getItem(ANALYTICS_KEY);
+        const history = rawHistory ? JSON.parse(rawHistory) : [];
+
+        const avgRT = CURRENT_SESSION.reactionTimes.length > 0
+          ? Math.round(CURRENT_SESSION.reactionTimes.reduce((a, b) => a + b, 0) / CURRENT_SESSION.reactionTimes.length)
+          : null;
+
+        const sessionRecord = {
+          id: Date.now(),
+          timestamp: new Date().toISOString(),
+          game: STATE.selectedGame,
+          lazyEye: STATE.lazyEye,
+          durationSec: Math.round(CURRENT_SESSION.activePlaySeconds),
+          startContrast: +(CURRENT_SESSION.startContrast.toFixed(3)),
+          endContrast: +(STATE.goodEyeContrast.toFixed(3)),
+          contrastDelta: +((STATE.goodEyeContrast - CURRENT_SESSION.startContrast).toFixed(3)),
+          ipdMm: Math.round(STATE.ipdMeters * 1000),
+          prismOffset: { x: +(STATE.alignmentOffset.x.toFixed(4)), y: +(STATE.alignmentOffset.y.toFixed(4)) },
+          hits: CURRENT_SESSION.hits,
+          misses: CURRENT_SESSION.misses,
+          averageReactionTimeMs: avgRT,
+          endReason: reason
+        };
+
+        history.push(sessionRecord);
+        localStorage.setItem(ANALYTICS_KEY, JSON.stringify(history));
+        CURRENT_SESSION.recorded = true;
+      } catch (e) {
+        console.warn('Analytics logging failed:', e);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && STATE.mode === 'PLAYING') {
+        saveState();
+        pauseSession();
+      }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (STATE.mode === 'PLAYING' || STATE.mode === 'PAUSED') {
+        recordSessionAnalytics('NORMAL_EXIT');
+      }
+    });
+
+    /* ========================================================
+       2. محرك Three.js البصري
+       ======================================================== */
+    const canvas = document.getElementById('gl-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020204);
+
+    const cameraLeft = new THREE.PerspectiveCamera(65, (window.innerWidth / 2) / window.innerHeight, 0.05, 50);
+    const cameraRight = new THREE.PerspectiveCamera(65, (window.innerWidth / 2) / window.innerHeight, 0.05, 50);
+    const cameraMono = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 50);
+    cameraMono.position.set(0, 0, 0);
+
+    const sharedGroup = new THREE.Group();
+    const lazyEyeGroup = new THREE.Group();
+    const goodEyeGroup = new THREE.Group();
+    const calibrationGroup = new THREE.Group();
+
+    scene.add(sharedGroup);
+    scene.add(lazyEyeGroup);
+    scene.add(goodEyeGroup);
+    scene.add(calibrationGroup);
+
+    // أقفال الدمج البصري المشتركة
+    (function initFusionLocks() {
+      const tunnelGeo = new THREE.BoxGeometry(4.4, 4.4, 7.5);
+      const wireGeo = new THREE.WireframeGeometry(tunnelGeo);
+      const tunnelMesh = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x1f2e4d, transparent: true, opacity: 0.6 }));
+      tunnelMesh.position.set(0, 0, -3.75);
+      sharedGroup.add(tunnelMesh);
+
+      const centralRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.03, 0.045, 32),
+        new THREE.MeshBasicMaterial({ color: 0x556677, side: THREE.DoubleSide })
+      );
+      centralRing.position.set(0, 0, -2.5);
+      sharedGroup.add(centralRing);
+    })();
+
+    // المنشور الرقمي
+    let calibCircle, calibCross;
+    (function initCalibrationElements() {
+      calibCircle = new THREE.Mesh(
+        new THREE.RingGeometry(0.12, 0.14, 32),
+        new THREE.MeshBasicMaterial({ color: 0x00ffcc, side: THREE.DoubleSide })
+      );
+      calibCircle.position.set(0, 0, -2.5);
+
+      const crossGroup = new THREE.Group();
+      const crossMat = new THREE.MeshBasicMaterial({ color: 0xff2255 });
+      crossGroup.add(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.02), crossMat));
+      crossGroup.add(new THREE.Mesh(new THREE.PlaneGeometry(0.02, 0.3), crossMat));
+      crossGroup.position.set(0, 0, -2.5);
+      calibCross = crossGroup;
+
+      calibrationGroup.add(calibCircle);
+      calibrationGroup.add(calibCross);
+      calibrationGroup.visible = false;
+    })();
+
+    let gameOverIndicator, levelCompleteIndicator;
+    (function initStatusIndicators() {
+      const geoLoss = new THREE.RingGeometry(0.35, 0.42, 32);
+      const matLoss = new THREE.MeshBasicMaterial({ color: 0xff2222, side: THREE.DoubleSide });
+      gameOverIndicator = new THREE.Mesh(geoLoss, matLoss);
+      gameOverIndicator.position.set(0, 0, -3.0);
+      gameOverIndicator.visible = false;
+      sharedGroup.add(gameOverIndicator);
+
+      const geoWin = new THREE.RingGeometry(0.38, 0.45, 32);
+      const matWin = new THREE.MeshBasicMaterial({ color: 0x00ff88, side: THREE.DoubleSide });
+      levelCompleteIndicator = new THREE.Mesh(geoWin, matWin);
+      levelCompleteIndicator.position.set(0, 0, -3.0);
+      levelCompleteIndicator.visible = false;
+      sharedGroup.add(levelCompleteIndicator);
+    })();
+
+    /* ========================================================
+       3. تجمعات الكائنات والمواد
+       ======================================================== */
+    const brightLazyMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+    const dimGoodMat = new THREE.MeshBasicMaterial({ color: 0x999999, transparent: true, opacity: STATE.goodEyeContrast });
+
+    // الإصلاح 6: تعريف fixCHMat في النطاق العام للوصول المباشر وتحديث الشفافية
+    const fixCHMat = new THREE.MeshBasicMaterial({
+      color: 0x777777,
+      transparent: true,
+      opacity: STATE.goodEyeContrast
+    });
+
+    // عناصر تتريس
+    const COLS = 10, ROWS = 16, BLOCK_SIZE = 0.22;
+    const boardWidth = COLS * BLOCK_SIZE;
+    const boardHeight = ROWS * BLOCK_SIZE;
+
+    const tetrisFrame = new THREE.LineSegments(
+      new THREE.WireframeGeometry(new THREE.BoxGeometry(boardWidth + 0.04, boardHeight + 0.04, 0.1)),
+      new THREE.LineBasicMaterial({ color: 0x444466 })
+    );
+    tetrisFrame.position.set(0, 0, -3.5);
+    sharedGroup.add(tetrisFrame);
+
+    const blockGeom = new THREE.BoxGeometry(BLOCK_SIZE * 0.92, BLOCK_SIZE * 0.92, BLOCK_SIZE * 0.92);
+
+    const fallingPool = [];
+    for (let i = 0; i < 4; i++) {
+      const mesh = new THREE.Mesh(blockGeom, brightLazyMat);
+      mesh.visible = false;
+      lazyEyeGroup.add(mesh);
+      fallingPool.push(mesh);
+    }
+
+    const boardPool = [];
+    for (let r = 0; r < ROWS; r++) {
+      boardPool[r] = [];
+      for (let c = 0; c < COLS; c++) {
+        const mesh = new THREE.Mesh(blockGeom, dimGoodMat);
+        mesh.visible = false;
+        mesh.position.set(
+          -boardWidth / 2 + BLOCK_SIZE / 2 + c * BLOCK_SIZE,
+          boardHeight / 2 - BLOCK_SIZE / 2 - r * BLOCK_SIZE,
+          -3.5
+        );
+        goodEyeGroup.add(mesh);
+        boardPool[r][c] = mesh;
+      }
+    }
+
+    // عناصر 3D Breakout
+    const ballGeo = new THREE.SphereGeometry(0.1, 24, 24);
+    const breakoutBall = new THREE.Mesh(ballGeo, brightLazyMat);
+    breakoutBall.visible = false;
+    lazyEyeGroup.add(breakoutBall);
+
+    const paddleGeo = new THREE.BoxGeometry(0.8, 0.18, 0.1);
+    const breakoutPaddle = new THREE.Mesh(paddleGeo, dimGoodMat);
+    breakoutPaddle.position.set(0, -1.2, -1.8);
+    breakoutPaddle.visible = false;
+    goodEyeGroup.add(breakoutPaddle);
+
+    const BRICK_ROWS = 4, BRICK_COLS = 6;
+    const BRICK_W = 0.55, BRICK_H = 0.22, BRICK_D = 0.12;
+    const breakoutBricks = [];
+    for (let r = 0; r < BRICK_ROWS; r++) {
+      breakoutBricks[r] = [];
+      for (let c = 0; c < BRICK_COLS; c++) {
+        const bMesh = new THREE.Mesh(new THREE.BoxGeometry(BRICK_W, BRICK_H, BRICK_D), brightLazyMat);
+        bMesh.position.set(
+          (c - (BRICK_COLS - 1) / 2) * (BRICK_W + 0.08),
+          1.2 - r * (BRICK_H + 0.08),
+          -4.8
+        );
+        bMesh.visible = false;
+        lazyEyeGroup.add(bMesh);
+        breakoutBricks[r][c] = bMesh;
+      }
+    }
+
+    // عناصر Gaze Fixation
+    const fixationTargetGroup = new THREE.Group();
+    const fixOuterRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.14, 0.18, 32),
+      new THREE.MeshBasicMaterial({ color: 0x00ffcc, side: THREE.DoubleSide })
+    );
+    const fixCenterDot = new THREE.Mesh(
+      new THREE.CircleGeometry(0.04, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    );
+    fixationTargetGroup.add(fixOuterRing);
+    fixationTargetGroup.add(fixCenterDot);
+    fixationTargetGroup.visible = false;
+    lazyEyeGroup.add(fixationTargetGroup);
+
+    // مرساة التوجيه الثابتة للعين السليمة
+    const fixationCrosshair = new THREE.Group();
+    fixationCrosshair.add(new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.015), fixCHMat));
+    fixationCrosshair.add(new THREE.Mesh(new THREE.PlaneGeometry(0.015, 0.25), fixCHMat));
+    fixationCrosshair.position.set(0, 0, -2.5); // ثابتة في المركز
+    fixationCrosshair.visible = false;
+    goodEyeGroup.add(fixationCrosshair);
+
+    /* ========================================================
+       4. محرك تتريس
+       ======================================================== */
+    let grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    let activePiece = null;
+    let dropTimer = 0;
+    let dropInterval = 850;
+
+    const SHAPES = [
+      [[1,1,1,1]], [[1,1],[1,1]], [[0,1,0],[1,1,1]],
+      [[1,0,0],[1,1,1]], [[0,0,1],[1,1,1]], [[0,1,1],[1,1,0]], [[1,1,0],[0,1,1]]
+    ];
+
+    function spawnTetrisPiece() {
+      const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+      activePiece = {
+        matrix: shape,
+        x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
+        y: 0
+      };
+
+      if (checkTetrisCollision(0, 0, activePiece.matrix)) {
+        triggerGameOver();
+        return;
+      }
+      updateFallingPieceVisuals();
+    }
+
+    function updateFallingPieceVisuals() {
+      fallingPool.forEach(m => m.visible = false);
+      if (!activePiece || STATE.selectedGame !== 'TETRIS') return;
+
+      const m = activePiece.matrix;
+      let poolIndex = 0;
+      const offsetX = -boardWidth / 2 + BLOCK_SIZE / 2;
+      const offsetY = boardHeight / 2 - BLOCK_SIZE / 2;
+
+      for (let r = 0; r < m.length; r++) {
+        for (let c = 0; c < m[r].length; c++) {
+          if (m[r][c] && poolIndex < fallingPool.length) {
+            const mesh = fallingPool[poolIndex++];
+            mesh.position.set(
+              offsetX + (activePiece.x + c) * BLOCK_SIZE,
+              offsetY - (activePiece.y + r) * BLOCK_SIZE,
+              -3.5
+            );
+            mesh.visible = true;
+          }
+        }
+      }
+    }
+
+    function updateTetrisBoardVisuals() {
+      dimGoodMat.opacity = STATE.goodEyeContrast;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          boardPool[r][c].visible = (STATE.selectedGame === 'TETRIS' && grid[r][c] === 1);
+        }
+      }
+    }
+
+    function checkTetrisCollision(ox, oy, testMatrix) {
+      const m = testMatrix || activePiece.matrix;
+      for (let r = 0; r < m.length; r++) {
+        for (let c = 0; c < m[r].length; c++) {
+          if (m[r][c]) {
+            let nx = activePiece.x + c + ox;
+            let ny = activePiece.y + r + oy;
+            if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+            if (ny >= 0 && grid[ny][nx]) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function lockTetrisPiece() {
+      const m = activePiece.matrix;
+      for (let r = 0; r < m.length; r++) {
+        for (let c = 0; c < m[r].length; c++) {
+          if (m[r][c]) {
+            let gy = activePiece.y + r;
+            let gx = activePiece.x + c;
+            if (gy >= 0 && gy < ROWS) grid[gy][gx] = 1;
+          }
+        }
+      }
+
+      const initialRowCount = grid.length;
+      grid = grid.filter(row => !row.every(cell => cell === 1));
+      const cleared = initialRowCount - grid.length;
+      while (grid.length < ROWS) grid.unshift(Array(COLS).fill(0));
+
+      if (cleared > 0) CURRENT_SESSION.hits += cleared;
+
+      updateTetrisBoardVisuals();
+      STATE.streak++;
+
+      if (STATE.streak % 8 === 0 && dropInterval > 380) {
+        dropInterval = Math.max(380, Math.round(dropInterval * 0.96));
+      }
+      if (STATE.streak % 5 === 0 && STATE.goodEyeContrast < 0.85) {
+        STATE.goodEyeContrast = Math.min(0.85, STATE.goodEyeContrast + 0.02);
+        saveState();
+      }
+      spawnTetrisPiece();
+    }
+
+    function moveTetris(dx, dy) {
+      if (!activePiece || STATE.mode !== 'PLAYING') return false;
+      if (!checkTetrisCollision(dx, dy)) {
+        activePiece.x += dx;
+        activePiece.y += dy;
+        updateFallingPieceVisuals();
+        return true;
+      } else if (dy > 0) {
+        lockTetrisPiece();
+        return false;
+      }
+      return false;
+    }
+
+    function rotateTetris() {
+      if (!activePiece || STATE.mode !== 'PLAYING') return;
+      const rotated = activePiece.matrix[0].map((_, i) =>
+        activePiece.matrix.map(row => row[i]).reverse()
+      );
+      if (!checkTetrisCollision(0, 0, rotated)) {
+        activePiece.matrix = rotated;
+        updateFallingPieceVisuals();
+      }
+    }
+
+    /* ========================================================
+       5. محرك 3D Breakout
+       ======================================================== */
+    const ballPos = new THREE.Vector3(0, 0, -3.0);
+    const ballVel = new THREE.Vector3(0, 0, 0);
+    const paddlePos = { x: 0, y: -1.2 };
+    let breakoutActive = false;
+
+    function initBreakout() {
+      breakoutActive = true;
+      STATE.breakoutSpeedMultiplier = 1.0 + (STATE.goodEyeContrast - 0.15) * 0.6;
+
+      ballPos.set(0, -0.5, -2.5);
+      ballVel.set(
+        (Math.random() - 0.5) * 0.035 * STATE.breakoutSpeedMultiplier,
+        0.022 * STATE.breakoutSpeedMultiplier,
+        -0.048 * STATE.breakoutSpeedMultiplier
+      );
+      breakoutBall.position.copy(ballPos);
+      breakoutBall.visible = true;
+      breakoutPaddle.visible = true;
+
+      for (let r = 0; r < BRICK_ROWS; r++) {
+        for (let c = 0; c < BRICK_COLS; c++) {
+          breakoutBricks[r][c].visible = true;
+        }
+      }
+    }
+
+    function triggerLevelComplete() {
+      breakoutActive = false;
+      breakoutBall.visible = false;
+      levelCompleteIndicator.visible = true;
+
+      STATE.streak += 10;
+      STATE.goodEyeContrast = Math.min(0.85, STATE.goodEyeContrast + 0.04);
+      dimGoodMat.opacity = STATE.goodEyeContrast;
+      saveState();
+
+      setTimeout(() => {
+        levelCompleteIndicator.visible = false;
+        if (STATE.mode === 'PLAYING') initBreakout();
+      }, 2500);
+    }
+
+    function updateBreakoutPhysics(dtMs) {
+      if (!breakoutActive || STATE.mode !== 'PLAYING') return;
+
+      const clampedDt = Math.min(dtMs, 64);
+      const dtFactor = clampedDt / 16.67;
+
+      ballPos.x += ballVel.x * dtFactor;
+      ballPos.y += ballVel.y * dtFactor;
+      ballPos.z += ballVel.z * dtFactor;
+      breakoutBall.position.copy(ballPos);
+
+      const boundX = 1.85, boundY = 1.85;
+      if (ballPos.x > boundX || ballPos.x < -boundX) ballVel.x *= -1;
+      if (ballPos.y > boundY) ballVel.y *= -1;
+
+      if (ballPos.z <= -4.6 && ballVel.z < 0) {
+        let hitBrick = false;
+        let remainingBricks = 0;
+
+        for (let r = 0; r < BRICK_ROWS; r++) {
+          for (let c = 0; c < BRICK_COLS; c++) {
+            const b = breakoutBricks[r][c];
+            if (b.visible) {
+              const dx = Math.abs(ballPos.x - b.position.x);
+              const dy = Math.abs(ballPos.y - b.position.y);
+              if (!hitBrick && dx < BRICK_W / 2 + 0.09 && dy < BRICK_H / 2 + 0.09) {
+                b.visible = false;
+                hitBrick = true;
+                CURRENT_SESSION.hits++;
+                STATE.streak++;
+                ballVel.multiplyScalar(1.015);
+
+                if (STATE.streak % 4 === 0 && STATE.goodEyeContrast < 0.85) {
+                  STATE.goodEyeContrast = Math.min(0.85, STATE.goodEyeContrast + 0.02);
+                  dimGoodMat.opacity = STATE.goodEyeContrast;
+                  saveState();
+                }
+              } else {
+                remainingBricks++;
+              }
+            }
+          }
+        }
+
+        if (hitBrick || ballPos.z <= -4.9) ballVel.z *= -1;
+        if (remainingBricks === 0) { triggerLevelComplete(); return; }
+      }
+
+      if (ballPos.z >= -1.9 && ballPos.z <= -1.7 && ballVel.z > 0) {
+        const dx = Math.abs(ballPos.x - paddlePos.x);
+        const dy = Math.abs(ballPos.y - paddlePos.y);
+        if (dx < 0.55 && dy < 0.25) {
+          ballVel.z *= -1;
+          ballVel.x += (ballPos.x - paddlePos.x) * 0.035;
+        }
+      }
+
+      if (ballPos.z > -1.2) {
+        CURRENT_SESSION.misses++;
+        triggerGameOver();
+      }
+    }
+
+    function moveBreakoutPaddle(dx, dy) {
+      paddlePos.x = Math.max(-1.5, Math.min(1.5, paddlePos.x + dx));
+      paddlePos.y = Math.max(-1.6, Math.min(0.8, paddlePos.y + dy));
+      breakoutPaddle.position.x = paddlePos.x;
+      breakoutPaddle.position.y = paddlePos.y;
+    }
+
+    /* ========================================================
+       6. محرك Gaze Fixation (تطبيق الإصلاحات 1 و 2 و 3)
+       ======================================================== */
+    let fixationSpawnTime = 0;
+    let fixationActive = false;
+    let fixationPulse = 0;
+    let fixationAcknowledged = false; // الإصلاح 2: حارس ضد النقرات المزدوجة
+    const fixTimeoutMs = 3200;
+
+    function initFixationTraining() {
+      fixationActive = true;
+      // الإصلاح 3: تثبيت الـ crosshair في المركز دائماً كمرساة اندماج حركي
+      fixationCrosshair.position.set(0, 0, -2.5);
+      fixationCrosshair.visible = true;
+      spawnFixationTarget();
+    }
+
+    function spawnFixationTarget() {
+      fixationAcknowledged = false;
+
+      const rx = (Math.random() - 0.5) * 2.2;
+      const ry = (Math.random() - 0.5) * 1.6;
+      const rz = -2.2 - Math.random() * 1.8;
+
+      fixationTargetGroup.position.set(rx, ry, rz);
+      fixationTargetGroup.visible = true;
+
+      // الإصلاح 3: التأكد التام من بقاء crosshair ثابتاً في المركز
+      fixationCrosshair.position.set(0, 0, -2.5);
+
+      fixationSpawnTime = performance.now();
+    }
+
+    // الإصلاح 1: ربط النبض بـ deltaMs الفعلي ليصبح مستقلاً تماماً عن معدل الإطارات
+    function updateFixation(currentTime, deltaMs) {
+      if (!fixationActive || STATE.mode !== 'PLAYING') return;
+
+      const dtFactor = deltaMs / 16.67;
+      fixationPulse += 0.08 * dtFactor;
+
+      const scale = 1.0 + Math.sin(fixationPulse) * 0.15;
+      fixOuterRing.scale.set(scale, scale, 1);
+
+      if (!fixationAcknowledged && currentTime - fixationSpawnTime > fixTimeoutMs) {
+        CURRENT_SESSION.misses++;
+        STATE.streak = 0;
+        spawnFixationTarget();
+      }
+    }
+
+    // الإصلاح 2: منع التسجيل المزدوج للنقرة الواحدة عبر حاجز فوري وتأخير 300ms
+    function confirmFixationAcknowledge() {
+      if (!fixationActive || STATE.mode !== 'PLAYING' || fixationAcknowledged) return;
+
+      fixationAcknowledged = true;
+      fixationTargetGroup.visible = false;
+
+      const rt = performance.now() - fixationSpawnTime;
+      CURRENT_SESSION.reactionTimes.push(rt);
+      CURRENT_SESSION.hits++;
+      STATE.streak++;
+
+      if (STATE.streak % 4 === 0 && STATE.goodEyeContrast < 0.85) {
+        STATE.goodEyeContrast = Math.min(0.85, STATE.goodEyeContrast + 0.02);
+        fixCHMat.opacity = STATE.goodEyeContrast; // الإصلاح 6: تحديث شفافية المادة المعرفة عاماً
+        saveState();
+      }
+
+      setTimeout(() => {
+        if (STATE.mode === 'PLAYING' && STATE.selectedGame === 'FIXATION') {
+          spawnFixationTarget();
+        }
+      }, 300);
+    }
+
+    /* ========================================================
+       7. إدارة التوقف والطوارئ والإنهاء
+       ======================================================== */
+    function triggerGameOver() {
+      STATE.mode = 'GAME_OVER';
+      STATE.streak = 0;
+      dropInterval = 850;
+      gameOverIndicator.visible = true;
+
+      if (STATE.selectedGame === 'TETRIS') {
+        activePiece = null;
+        updateFallingPieceVisuals();
+      } else if (STATE.selectedGame === 'BREAKOUT') {
+        breakoutActive = false;
+        breakoutBall.visible = false;
+      }
+
+      setTimeout(() => {
+        gameOverIndicator.visible = false;
+        if (!STATE.isPanicked && STATE.mode === 'GAME_OVER') {
+          STATE.mode = 'PLAYING';
+          if (STATE.selectedGame === 'TETRIS') {
+            grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+            updateTetrisBoardVisuals();
+            spawnTetrisPiece();
+          } else if (STATE.selectedGame === 'BREAKOUT') {
+            initBreakout();
+          }
+        }
+      }, 3000);
+    }
+
+    function pauseSession() {
+      if (STATE.mode !== 'PLAYING') return;
+      STATE.mode = 'PAUSED';
+      document.getElementById('pause-screen').style.display = 'flex';
+      document.getElementById('hud-overlay').style.display = 'none';
+    }
+
+    function resumeSession() {
+      document.getElementById('pause-screen').style.display = 'none';
+      document.getElementById('hud-overlay').style.display = 'block';
+      lastFrameTime = performance.now();
+      STATE.mode = 'PLAYING';
+    }
+
+    function endSessionManually() {
+      recordSessionAnalytics('MANUAL_EXIT');
+      document.getElementById('pause-screen').style.display = 'none';
+      document.getElementById('hud-overlay').style.display = 'none';
+      document.getElementById('step-eye-select').style.display = 'flex';
+      STATE.mode = 'SETUP';
+      
+      lazyEyeGroup.visible = false;
+      goodEyeGroup.visible = false;
+      sharedGroup.visible = false;
+      calibrationGroup.visible = false;
+    }
+
+    function triggerPanic() {
+      recordSessionAnalytics('PANIC_ABORT');
+      STATE.isPanicked = true;
+      STATE.mode = 'PANIC';
+      document.getElementById('panic-screen').style.display = 'flex';
+      document.getElementById('pause-screen').style.display = 'none';
+      document.getElementById('hud-overlay').style.display = 'none';
+      lazyEyeGroup.visible = false;
+      goodEyeGroup.visible = false;
+      sharedGroup.visible = false;
+      calibrationGroup.visible = false;
+    }
+
+    function recoverFromPanic() {
+      STATE.isPanicked = false;
+      STATE.mode = 'SETUP';
+      document.getElementById('panic-screen').style.display = 'none';
+      document.getElementById('step-calibration-guide').style.display = 'flex';
+      sharedGroup.visible = true;
+      lazyEyeGroup.visible = true;
+      goodEyeGroup.visible = true;
+      calibrationGroup.visible = false;
+    }
+
+    /* ========================================================
+       8. واجهات التهيئة ووضع العرض الطبي (تطبيق الإصلاح 5)
+       ======================================================== */
+    function acceptDisclaimer() {
+      document.getElementById('step-disclaimer').style.display = 'none';
+      document.getElementById('step-eye-select').style.display = 'flex';
+      loadPersistedData();
+    }
+
+    function selectEye(eye) {
+      STATE.lazyEye = eye;
+      document.getElementById('btn-eye-left').className = (eye === 'left') ? 'active-game' : 'secondary';
+      document.getElementById('btn-eye-right').className = (eye === 'right') ? 'active-game' : 'secondary';
+    }
+
+    function selectGame(game) {
+      STATE.selectedGame = game;
+      document.getElementById('btn-game-tetris').className = (game === 'TETRIS') ? 'active-game' : 'secondary';
+      document.getElementById('btn-game-breakout').className = (game === 'BREAKOUT') ? 'active-game' : 'secondary';
+      document.getElementById('btn-game-fixation').className = (game === 'FIXATION') ? 'active-game' : 'secondary';
+    }
+
+    function proceedToIPD() {
+      STATE.isDemo2D = false;
+      document.getElementById('step-eye-select').style.display = 'none';
+      document.getElementById('step-ipd').style.display = 'flex';
+      saveState();
+    }
+
+    // الإصلاح 5: إطلاق وضع المعاينة للأطباء مع التنبيه السريري الصريح
+    function launchDemoMode() {
+      STATE.isDemo2D = true;
+      document.getElementById('step-eye-select').style.display = 'none';
+      showToast('⚠️ وضع المعاينة للأطباء: يعرض المشهد كاملاً (2D) بدون فصل بصري Dichoptic');
+      startActiveSession();
+    }
+
+    function updateIPDDisplay(val) {
+      document.getElementById('ipd-val-label').innerText = `المسافة الحالية: ${val} ملم`;
+      STATE.ipdMeters = val / 1000;
+    }
+
+    function confirmIPD() {
+      document.getElementById('step-ipd').style.display = 'none';
+      document.getElementById('step-calibration-guide').style.display = 'flex';
+      saveState();
+    }
+
+    function launchVRExperience() {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+      document.getElementById('step-calibration-guide').style.display = 'none';
+      STATE.mode = 'CALIBRATING';
+      calibrationGroup.visible = true;
+      calibCross.position.x = STATE.alignmentOffset.x;
+      calibCross.position.y = STATE.alignmentOffset.y;
+    }
+
+    function startActiveSession() {
+      STATE.mode = 'PLAYING';
+      calibrationGroup.visible = false;
+      gameOverIndicator.visible = false;
+      levelCompleteIndicator.visible = false;
+      document.getElementById('hud-overlay').style.display = 'block';
+      saveState();
+
+      CURRENT_SESSION.startTime = performance.now();
+      CURRENT_SESSION.activePlaySeconds = 0;
+      CURRENT_SESSION.hits = 0;
+      CURRENT_SESSION.misses = 0;
+      CURRENT_SESSION.reactionTimes = [];
+      CURRENT_SESSION.startContrast = STATE.goodEyeContrast;
+      CURRENT_SESSION.recorded = false;
+
+      tetrisFrame.visible = (STATE.selectedGame === 'TETRIS');
+      breakoutPaddle.visible = (STATE.selectedGame === 'BREAKOUT');
+      breakoutBall.visible = (STATE.selectedGame === 'BREAKOUT');
+      fixationCrosshair.visible = (STATE.selectedGame === 'FIXATION');
+
+      for (let r = 0; r < BRICK_ROWS; r++) {
+        for (let c = 0; c < BRICK_COLS; c++) {
+          breakoutBricks[r][c].visible = (STATE.selectedGame === 'BREAKOUT');
+        }
+      }
+
+      if (STATE.selectedGame === 'TETRIS') {
+        spawnTetrisPiece();
+        updateTetrisBoardVisuals();
+      } else if (STATE.selectedGame === 'BREAKOUT') {
+        initBreakout();
+      } else if (STATE.selectedGame === 'FIXATION') {
+        initFixationTraining();
+      }
+    }
+
+    function openAnalyticsModal() {
+      document.getElementById('step-eye-select').style.display = 'none';
+      document.getElementById('step-analytics').style.display = 'flex';
+
+      const raw = localStorage.getItem(ANALYTICS_KEY);
+      const history = raw ? JSON.parse(raw) : [];
+      const tbody = document.getElementById('analytics-table-body');
+      tbody.innerHTML = '';
+
+      let totalSec = 0;
+      history.forEach(item => {
+        totalSec += item.durationSec;
+        const row = document.createElement('tr');
+        const dateStr = new Date(item.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const rtInfo = item.averageReactionTimeMs ? ` | RT: ${item.averageReactionTimeMs}ms` : '';
+        row.innerHTML = `
+          <td>${dateStr}</td>
+          <td>${item.game}</td>
+          <td>${Math.round(item.durationSec / 60)} دقيقة</td>
+          <td>${Math.round(item.endContrast * 100)}%</td>
+          <td>إصابات: ${item.hits} | أخطاء: ${item.misses}${rtInfo}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.getElementById('analytics-summary').innerText = 
+        `إجمالي الجلسات: ${history.length} | التدريب: ${(totalSec / 60).toFixed(1)} دقيقة | التباين الحالي: ${(STATE.goodEyeContrast * 100).toFixed(0)}%`;
+    }
+
+    function closeAnalyticsModal() {
+      document.getElementById('step-analytics').style.display = 'none';
+      document.getElementById('step-eye-select').style.display = 'flex';
+    }
+
+    function exportMedicalReportJSON() {
+      const raw = localStorage.getItem(ANALYTICS_KEY);
+      const history = raw ? JSON.parse(raw) : [];
+
+      const report = {
+        metadata: {
+          exportDate: new Date().toISOString(),
+          protocol: "James Blaha Dichoptic Triad VR Protocol",
+          systemVersion: "v2.5.1 Clinical Master",
+          userConfig: {
+            targetLazyEye: STATE.lazyEye,
+            measuredIPD: `${Math.round(STATE.ipdMeters * 1000)} mm`,
+            digitalPrismOffset: STATE.alignmentOffset,
+            currentContrastLevel: +(STATE.goodEyeContrast.toFixed(3))
+          }
+        },
+        sessionLogs: history
+      };
+
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Amblyopia_Triad_Report_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    /* ========================================================
+       9. التحكم بالأجهزة
+       ======================================================== */
+    let calibrationHoldTime = 0;
+    let lastInputTime = 0;
+    const keysPressed = {};
+
+    window.addEventListener('keydown', (e) => {
+      keysPressed[e.key] = true;
+      if (e.key === 'Escape') triggerPanic();
+      if (e.key === 'q' || e.key === 'Q') pauseSession();
+      if (STATE.mode === 'CALIBRATING' && e.key === 'Enter') startActiveSession();
+
+      if (STATE.mode === 'PLAYING') {
+        if (STATE.selectedGame === 'TETRIS') {
+          if (e.key === 'ArrowLeft') moveTetris(-1, 0);
+          if (e.key === 'ArrowRight') moveTetris(1, 0);
+          if (e.key === 'ArrowDown') moveTetris(0, 1);
+          if (e.key === 'ArrowUp' || e.key === ' ') rotateTetris();
+        } else if (STATE.selectedGame === 'BREAKOUT') {
+          if (e.key === 'ArrowLeft') moveBreakoutPaddle(-0.15, 0);
+          if (e.key === 'ArrowRight') moveBreakoutPaddle(0.15, 0);
+          if (e.key === 'ArrowUp') moveBreakoutPaddle(0, 0.15);
+          if (e.key === 'ArrowDown') moveBreakoutPaddle(0, -0.15);
+        } else if (STATE.selectedGame === 'FIXATION') {
+          if (e.key === ' ' || e.key === 'Enter') confirmFixationAcknowledge();
+        }
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keysPressed[e.key] = false;
+    });
+
+    function handleInputs(time) {
+      if (STATE.isPanicked) return;
+
+      const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+      if (gp) {
+        if (gp.buttons[8]?.pressed) { triggerPanic(); return; }
+        if (gp.buttons[9]?.pressed) { pauseSession(); return; }
+      }
+
+      if (STATE.mode === 'CALIBRATING') {
+        let moveX = 0, moveY = 0;
+        if (gp) {
+          const stickX = gp.axes[0] || 0;
+          const stickY = gp.axes[1] || 0;
+          if (stickX < -0.35 || gp.buttons[14]?.pressed) moveX -= 1;
+          if (stickX > 0.35 || gp.buttons[15]?.pressed) moveX += 1;
+          if (stickY < -0.35 || gp.buttons[12]?.pressed) moveY += 1;
+          if (stickY > 0.35 || gp.buttons[13]?.pressed) moveY -= 1;
+
+          if (gp.buttons[0]?.pressed || gp.buttons[1]?.pressed) {
+            startActiveSession();
+            return;
+          }
+        }
+
+        if (keysPressed['ArrowLeft']) moveX -= 1;
+        if (keysPressed['ArrowRight']) moveX += 1;
+        if (keysPressed['ArrowUp']) moveY += 1;
+        if (keysPressed['ArrowDown']) moveY -= 1;
+
+        if (moveX !== 0 || moveY !== 0) {
+          calibrationHoldTime += 16;
+          const acceleration = Math.min(1 + calibrationHoldTime / 350, 3.2);
+          const step = 0.0018 * acceleration;
+          STATE.alignmentOffset.x += moveX * step;
+          STATE.alignmentOffset.y += moveY * step;
+          calibCross.position.x = STATE.alignmentOffset.x;
+          calibCross.position.y = STATE.alignmentOffset.y;
+        } else {
+          calibrationHoldTime = 0;
+        }
+      } 
+      else if (STATE.mode === 'PLAYING') {
+        if (gp) {
+          const stickX = gp.axes[0] || 0;
+          const stickY = gp.axes[1] || 0;
+          const btnAction = gp.buttons[0]?.pressed || gp.buttons[1]?.pressed;
+
+          if (STATE.selectedGame === 'TETRIS') {
+            if (time - lastInputTime < 135) return;
+            if (stickX < -0.5 || gp.buttons[14]?.pressed) { moveTetris(-1, 0); lastInputTime = time; }
+            else if (stickX > 0.5 || gp.buttons[15]?.pressed) { moveTetris(1, 0); lastInputTime = time; }
+            else if (stickY > 0.5 || gp.buttons[13]?.pressed) { moveTetris(0, 1); lastInputTime = time; }
+            else if (stickY < -0.5 || gp.buttons[12]?.pressed || btnAction) { rotateTetris(); lastInputTime = time; }
+          } else if (STATE.selectedGame === 'BREAKOUT') {
+            if (Math.abs(stickX) > 0.15) moveBreakoutPaddle(stickX * 0.04, 0);
+            if (Math.abs(stickY) > 0.15) moveBreakoutPaddle(0, -stickY * 0.04);
+          } else if (STATE.selectedGame === 'FIXATION') {
+            if (btnAction && time - lastInputTime > 200) {
+              confirmFixationAcknowledge();
+              lastInputTime = time;
+            }
+          }
+        }
+      }
+    }
+
+    /* ========================================================
+       10. حلقة الرندر المعيارية والـ HUD التكيفي (تطبيق الإصلاح 4)
+       ======================================================== */
+    let lastFrameTime = performance.now();
+
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      renderer.setSize(w, h);
+      cameraLeft.aspect = (w / 2) / h;
+      cameraLeft.updateProjectionMatrix();
+      cameraRight.aspect = (w / 2) / h;
+      cameraRight.updateProjectionMatrix();
+      cameraMono.aspect = w / h;
+      cameraMono.updateProjectionMatrix();
+    });
+
+    function renderLoop(currentTime) {
+      requestAnimationFrame(renderLoop);
+
+      const deltaMs = currentTime - lastFrameTime;
+      lastFrameTime = currentTime;
+
+      handleInputs(currentTime);
+
+      if (STATE.mode === 'PLAYING' && !STATE.isPanicked) {
+        CURRENT_SESSION.activePlaySeconds += deltaMs / 1000;
+
+        // تحديث واجهة الـ HUD
+        document.getElementById('hud-contrast').innerText = Math.round(STATE.goodEyeContrast * 100) + '%';
+        const mins = Math.floor(CURRENT_SESSION.activePlaySeconds / 60);
+        const secs = Math.floor(CURRENT_SESSION.activePlaySeconds % 60);
+        document.getElementById('hud-time').innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        document.getElementById('hud-streak').innerText = STATE.streak;
+
+        // الإصلاح 4: تخصيص المقياس المعروض في HUD بحسب التمرين النشط
+        const metricEl = document.getElementById('hud-metric');
+        if (STATE.selectedGame === 'TETRIS') {
+          const speed = (850 / dropInterval).toFixed(2);
+          metricEl.innerText = `السرعة: ${speed}x (إصابات: ${CURRENT_SESSION.hits})`;
+          if (currentTime - dropTimer > dropInterval) {
+            moveTetris(0, 1);
+            dropTimer = currentTime;
+          }
+        } else if (STATE.selectedGame === 'BREAKOUT') {
+          metricEl.innerText = `السرعة: ${STATE.breakoutSpeedMultiplier.toFixed(2)}x (طوب: ${CURRENT_SESSION.hits})`;
+          updateBreakoutPhysics(deltaMs);
+        } else if (STATE.selectedGame === 'FIXATION') {
+          const avgRT = CURRENT_SESSION.reactionTimes.length > 0
+            ? Math.round(CURRENT_SESSION.reactionTimes.reduce((a, b) => a + b, 0) / CURRENT_SESSION.reactionTimes.length)
+            : 0;
+          metricEl.innerText = `RT: ${avgRT}ms (أهداف: ${CURRENT_SESSION.hits})`;
+          updateFixation(currentTime, deltaMs); // تمرير deltaMs للإصلاح 1
+        }
+      }
+
+      if (STATE.isPanicked) return;
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+
+      if (STATE.isDemo2D) {
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, w, h);
+        lazyEyeGroup.visible = true;
+        goodEyeGroup.visible = true;
+        sharedGroup.visible = true;
+        renderer.render(scene, cameraMono);
+        return;
+      }
+
+      const halfW = w / 2;
+      renderer.setScissorTest(true);
+
+      const halfIPD = STATE.ipdMeters / 2;
+      cameraLeft.position.set(-halfIPD, 0, 0);
+      cameraRight.position.set(halfIPD, 0, 0);
+
+      if (STATE.lazyEye === 'left') {
+        cameraLeft.position.x += STATE.alignmentOffset.x;
+        cameraLeft.position.y += STATE.alignmentOffset.y;
+      } else {
+        cameraRight.position.x += STATE.alignmentOffset.x;
+        cameraRight.position.y += STATE.alignmentOffset.y;
+      }
+
+      // نصف العين اليسرى
+      renderer.setViewport(0, 0, halfW, h);
+      renderer.setScissor(0, 0, halfW, h);
+      if (STATE.mode === 'CALIBRATING') {
+        calibCircle.visible = true;
+        calibCross.visible = false;
+      } else {
+        lazyEyeGroup.visible = (STATE.lazyEye === 'left');
+        goodEyeGroup.visible = (STATE.lazyEye === 'right');
+      }
+      renderer.render(scene, cameraLeft);
+
+      // نصف العين اليمنى
+      renderer.setViewport(halfW, 0, halfW, h);
+      renderer.setScissor(halfW, 0, halfW, h);
+      if (STATE.mode === 'CALIBRATING') {
+        calibCircle.visible = false;
+        calibCross.visible = true;
+      } else {
+        lazyEyeGroup.visible = (STATE.lazyEye === 'right');
+        goodEyeGroup.visible = (STATE.lazyEye === 'left');
+      }
+      renderer.render(scene, cameraRight);
+    }
+
+    requestAnimationFrame(renderLoop);
+  </script>
+</body>
+</html>
